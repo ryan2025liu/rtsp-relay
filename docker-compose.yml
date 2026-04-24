@@ -1,0 +1,27 @@
+# Standalone RTSP relay project:
+#   docker compose build
+#   docker compose --env-file .env up -d
+#
+# Add more cameras via override:
+#   cp docker-compose.streams.example.yml docker-compose.streams.yml
+#   docker compose --env-file .env -f docker-compose.yml -f docker-compose.streams.yml up -d
+
+x-rtsp-relay-image: &rtsp-relay-image
+  image: ${RTSP_RELAY_IMAGE:-skybrain/rtsp-relay:local}
+  build:
+    context: ./rtsp-relay
+    dockerfile: Dockerfile
+  restart: unless-stopped
+
+services:
+  rtsp-relay-01:
+    <<: *rtsp-relay-image
+    container_name: ${RTSP_RELAY_01_CONTAINER_NAME:-skybrain-rtsp-relay-01}
+    environment:
+      RTSP_URL: ${RTSP_RELAY_01_RTSP_URL:-}
+      STREAM_ID: ${RTSP_RELAY_01_STREAM_ID:-}
+      RTMP_BASE: ${RTMP_RELAY_RTMP_BASE:-rtmp://localhost:1935/live}
+      RTMP_OUT: ${RTSP_RELAY_01_RTMP_OUT:-}
+      FFMPEG_LOGLEVEL: ${FFMPEG_LOGLEVEL:-info}
+      FFMPEG_EXTRA_ARGS: ${FFMPEG_EXTRA_ARGS:-}
+      TRANSCODE_H264: ${TRANSCODE_H264:-}

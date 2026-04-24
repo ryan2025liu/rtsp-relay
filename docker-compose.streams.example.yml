@@ -1,0 +1,32 @@
+# Copy to docker-compose.streams.yml and edit.
+#
+#   docker compose --env-file .env \
+#     -f docker-compose.yml \
+#     -f docker-compose.streams.yml \
+#     up -d
+
+x-rtsp-relay-worker: &rtsp-relay-worker
+  image: ${RTSP_RELAY_IMAGE:-skybrain/rtsp-relay:local}
+  restart: unless-stopped
+
+services:
+  rtsp-relay-02:
+    <<: *rtsp-relay-worker
+    container_name: ${RTSP_RELAY_02_CONTAINER_NAME:-skybrain-rtsp-relay-02}
+    environment:
+      RTSP_URL: ${RTSP_RELAY_02_RTSP_URL:?set RTSP_RELAY_02_RTSP_URL in .env}
+      STREAM_ID: ${RTSP_RELAY_02_STREAM_ID:?set RTSP_RELAY_02_STREAM_ID in .env}
+      RTMP_BASE: ${RTMP_RELAY_RTMP_BASE:-rtmp://localhost:1935/live}
+      RTMP_OUT: ${RTSP_RELAY_02_RTMP_OUT:-}
+      FFMPEG_LOGLEVEL: ${FFMPEG_LOGLEVEL:-info}
+      FFMPEG_EXTRA_ARGS: ${FFMPEG_EXTRA_ARGS:-}
+      TRANSCODE_H264: ${TRANSCODE_H264:-}
+
+  # Copy this block for rtsp-relay-03, 04, ...
+  # rtsp-relay-03:
+  #   <<: *rtsp-relay-worker
+  #   container_name: skybrain-rtsp-relay-03
+  #   environment:
+  #     RTSP_URL: ${RTSP_RELAY_03_RTSP_URL:?}
+  #     STREAM_ID: ${RTSP_RELAY_03_STREAM_ID:?}
+  #     RTMP_BASE: ${RTMP_RELAY_RTMP_BASE:-rtmp://localhost:1935/live}

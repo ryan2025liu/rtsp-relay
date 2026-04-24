@@ -1,0 +1,6 @@
+.env
+docker-compose.streams.yml
+runtime/data/*
+runtime/tmp/*
+!runtime/data/.gitkeep
+!runtime/tmp/.gitkeep

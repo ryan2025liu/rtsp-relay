@@ -1,0 +1,26 @@
+# Cursor Rules For skybrain-rtsp-relay
+# Version: 1.0.0
+
+本项目 AI 助手必须遵守 `.cursor/CONSTITUTION.md`。
+
+## Mandatory
+1. 每次开始任务先读目标目录 `.folder.md`。
+2. 变更代码必须同步更新文档（README/docs/.folder.md/Header）。
+3. 先实现最小可运行版本，再做增强，禁止超范围设计。
+
+## Project Scope
+1. 这是本地视频流管理与转发平台，不包含业务系统逻辑。
+2. 仅保留运行时契约：`stream_key`、RTMP 推流到标准 SRS。
+3. 控制面与媒体执行面分离：`apps/api`、`apps/worker`、`apps/web`。
+
+## Tech Baseline (MVP)
+1. Backend: FastAPI (Python 3.11+)
+2. Worker: ffmpeg process manager
+3. Frontend: React + Ant Design
+4. Storage: SQLite first, PostgreSQL ready
+
+## Working Rules
+1. 目录和文件命名使用 kebab-case。
+2. 敏感配置放 `.env`，禁止硬编码凭证。
+3. 所有外部接口变更需更新 `docs/02-api`。
+4. 所有架构决策变更需记录 `docs/04-adr`。
