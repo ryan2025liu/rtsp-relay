@@ -18,3 +18,5 @@
 8. 预览链接必须使用 `VITE_API_BASE_URL` 对应的 API origin，不能相对写成前端 origin
 
 服务器单机部署见 **`deploy-lan-server.md`**（`docker-compose.server.yml` + `deploy/env.server.example` + `apps/web/Dockerfile.prod`）。推荐部署目录 **`~/websites/rtsp-relay/`**。
+
+管理页每 5 秒会静默刷新列表与当前通道详情（**不**再全屏「正在加载」、**不**用服务端数据覆盖正在编辑的表单），避免误以为是整页刷新；修改前端后请对 `relay-web` 重新 `build`。

@@ -84,16 +84,21 @@ function StreamPreviewPlayer({ hlsUrl, title }) {
     const handlePlaying = () => mounted && setPlaybackState("playing");
     const handlePause = () => mounted && setPlaybackState("paused");
     const handleWaiting = () => mounted && setPlaybackState("buffering");
-    const handleError = () => mounted && setPlaybackError("播放器发生错误，请重载后再试。");
+    const handleNativeVideoError = () => {
+      if (!mounted) {
+        return;
+      }
+      setPlaybackError("播放器发生错误，请重载后再试。");
+    };
 
     video.addEventListener("playing", handlePlaying);
     video.addEventListener("pause", handlePause);
     video.addEventListener("waiting", handleWaiting);
-    video.addEventListener("error", handleError);
     setPlaybackError("");
     setPlaybackState("loading");
 
     if (video.canPlayType("application/vnd.apple.mpegurl")) {
+      video.addEventListener("error", handleNativeVideoError);
       video.src = hlsUrl;
       void attemptPlay();
       return () => {
@@ -101,7 +106,7 @@ function StreamPreviewPlayer({ hlsUrl, title }) {
         video.removeEventListener("playing", handlePlaying);
         video.removeEventListener("pause", handlePause);
         video.removeEventListener("waiting", handleWaiting);
-        video.removeEventListener("error", handleError);
+        video.removeEventListener("error", handleNativeVideoError);
         video.pause();
         video.removeAttribute("src");
         video.load();
@@ -109,7 +114,8 @@ function StreamPreviewPlayer({ hlsUrl, title }) {
     }
 
     if (Hls.isSupported()) {
-      hls = new Hls({ enableWorker: true });
+      // 跨端口访问 API 时，Worker 内 XHR 偶发 CORS/与 video error 竞态，关闭 worker；错误以 Hls 事件为准，勿绑原生 video error（易误报）
+      hls = new Hls({ enableWorker: false, lowLatencyMode: true });
       hls.on(Hls.Events.ERROR, (_event, data) => {
         if (!mounted) {
           return;
@@ -142,7 +148,6 @@ function StreamPreviewPlayer({ hlsUrl, title }) {
         video.removeEventListener("playing", handlePlaying);
         video.removeEventListener("pause", handlePause);
         video.removeEventListener("waiting", handleWaiting);
-        video.removeEventListener("error", handleError);
         hls?.destroy();
       };
     }
@@ -154,7 +159,6 @@ function StreamPreviewPlayer({ hlsUrl, title }) {
       video.removeEventListener("playing", handlePlaying);
       video.removeEventListener("pause", handlePause);
       video.removeEventListener("waiting", handleWaiting);
-      video.removeEventListener("error", handleError);
     };
   }, [hlsUrl, reloadToken]);
 
@@ -256,7 +260,18 @@ export default function App() {
   const [banner, setBanner] = useState("");
   const [error, setError] = useState("");
 
-  const previewUrls = useMemo(() => buildPreviewUrls(detail), [detail]);
+  const previewUrls = useMemo(() => {
+    if (!detail) {
+      return null;
+    }
+    return buildPreviewUrls(detail);
+  }, [
+    detail?.source?.id,
+    detail?.source?.stream_key,
+    detail?.target?.id,
+    detail?.target?.rtmp_base_url,
+    detail?.target?.playback_vhost,
+  ]);
 
   async function loadDashboard(preserveSelected = true) {
     setError("");
@@ -299,27 +314,36 @@ export default function App() {
     }
   }
 
-  async function loadDetail(sourceId) {
+  async function loadDetail(
+    sourceId,
+    { showLoading = true, syncForm = true } = {}
+  ) {
     if (!sourceId) {
       setDetail(null);
       return;
     }
-    setIsDetailLoading(true);
+    if (showLoading) {
+      setIsDetailLoading(true);
+    }
     try {
       const data = await api.getSourceDetail(sourceId, 120);
       setDetail(data);
-      setSourceForm({
-        name: data.source.name,
-        source_url: data.source.source_url,
-        stream_key: data.source.stream_key,
-        target_id: data.source.target_id || "",
-        enabled: data.source.enabled,
-        transcode_mode: data.source.transcode_mode,
-      });
+      if (syncForm) {
+        setSourceForm({
+          name: data.source.name,
+          source_url: data.source.source_url,
+          stream_key: data.source.stream_key,
+          target_id: data.source.target_id || "",
+          enabled: data.source.enabled,
+          transcode_mode: data.source.transcode_mode,
+        });
+      }
     } catch (loadError) {
       setError(loadError.message);
     } finally {
-      setIsDetailLoading(false);
+      if (showLoading) {
+        setIsDetailLoading(false);
+      }
     }
   }
 
@@ -328,14 +352,15 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    loadDetail(selectedSourceId);
+    void loadDetail(selectedSourceId);
   }, [selectedSourceId]);
 
   useEffect(() => {
     const timer = setInterval(() => {
-      loadDashboard(true);
+      void loadDashboard(true);
       if (selectedSourceId) {
-        loadDetail(selectedSourceId);
+        // 仅刷新任务状态与日志，不打断表单编辑、不闪「正在加载」
+        void loadDetail(selectedSourceId, { showLoading: false, syncForm: false });
       }
     }, 5000);
 
@@ -398,7 +423,7 @@ export default function App() {
       }
       await api.updateSource(selectedSourceId, payload);
       await loadDashboard(true);
-      await loadDetail(selectedSourceId);
+      await loadDetail(selectedSourceId, { showLoading: false, syncForm: true });
       showBanner("通道配置已保存");
     } catch (submitError) {
       setError(submitError.message);
@@ -443,7 +468,7 @@ export default function App() {
       }
       await loadDashboard(true);
       if (selectedSourceId === sourceId) {
-        await loadDetail(sourceId);
+        await loadDetail(sourceId, { showLoading: false, syncForm: true });
       }
       showBanner(`任务已${action === "restart" ? "重启" : action === "start" ? "启动" : "停止"}`);
     } catch (actionError) {
