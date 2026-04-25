@@ -8,7 +8,7 @@
   2. Avoid adding multi-environment deployment complexity here.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import os
 from pathlib import Path
 
@@ -17,6 +17,7 @@ ROOT_DIR = Path(__file__).resolve().parents[2]
 DEFAULT_DB_PATH = ROOT_DIR / "runtime" / "data" / "relay.db"
 DEFAULT_RTMP_BASE_URL = "rtmp://localhost:1935/live"
 DEFAULT_LOG_DIR = ROOT_DIR / "runtime" / "logs"
+DEFAULT_WEB_ALLOWED_ORIGINS = ["http://127.0.0.1:5173", "http://localhost:5173"]
 
 
 @dataclass(frozen=True)
@@ -30,7 +31,9 @@ class AppConfig:
     relay_command_template: str
     max_retry_count: int
     retry_delay_seconds: float
-    web_allowed_origins: list[str]
+    web_allowed_origins: list[str] = field(
+        default_factory=lambda: DEFAULT_WEB_ALLOWED_ORIGINS.copy()
+    )
 
 
 def load_config() -> AppConfig:

@@ -61,11 +61,14 @@ def build_service(config: AppConfig | None = None) -> RelayService:
             retry_delay_seconds=app_config.retry_delay_seconds,
         )
     )
-    return RelayService(store=store, job_manager=manager)
+    relay_service = RelayService(store=store, job_manager=manager)
+    relay_service.app_config = app_config
+    return relay_service
 
 
 def create_app(service: RelayService | None = None) -> FastAPI:
     relay_service = service or build_service()
+    app_config = getattr(relay_service, "app_config", load_config())
     relay_service.initialize()
 
     @asynccontextmanager
