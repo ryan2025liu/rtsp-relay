@@ -76,6 +76,40 @@ bash scripts/dev/start-api.sh
 curl -sS http://127.0.0.1:18081/health
 ```
 
+## 本地 Docker 联调
+
+如果要以当前控制面 API 运行本地单机版本，使用：
+
+```bash
+docker compose -f docker-compose.local.yml up -d --build
+```
+
+默认会启动：
+
+1. `relay-api`：本地控制面 API，同时在容器内执行 `ffmpeg`
+2. `srs`：本地联调用 SRS
+
+本地 worker 的默认恢复策略：
+
+1. 异常退出后按固定延迟自动重试
+2. 默认最多重试 `3` 次
+3. 默认重试间隔 `5` 秒
+4. 可通过 `RELAY_MAX_RETRY_COUNT` 和 `RELAY_RETRY_DELAY_SECONDS` 调整
+
+常用检查：
+
+```bash
+curl -sS http://127.0.0.1:18081/health
+docker compose -f docker-compose.local.yml logs -f relay-api
+docker compose -f docker-compose.local.yml logs -f srs
+```
+
+运行时数据保存在：
+
+1. `runtime/data`：SQLite
+2. `runtime/logs`：worker 日志
+3. `runtime/tmp`：临时文件
+
 ## MVP 约束
 
 1. 单机运行，不做集群化部署。
