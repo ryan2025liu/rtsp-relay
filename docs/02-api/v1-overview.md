@@ -4,18 +4,19 @@
 当前已实现:
 1. `GET /health`
 2. `GET /api/v1/sources`
-3. `POST /api/v1/sources`
-4. `PUT /api/v1/sources/{id}`
-5. `DELETE /api/v1/sources/{id}`
-6. `GET /api/v1/targets`
-7. `POST /api/v1/targets`
-8. `PUT /api/v1/targets/{id}`
-9. `DELETE /api/v1/targets/{id}`
-10. `POST /api/v1/jobs/{source_id}/start`
-11. `POST /api/v1/jobs/{source_id}/stop`
-12. `POST /api/v1/jobs/{source_id}/restart`
-13. `GET /api/v1/jobs/{source_id}/status`
-14. `GET /api/v1/jobs/{source_id}/logs`
+3. `GET /api/v1/sources/{id}`
+4. `POST /api/v1/sources`
+5. `PUT /api/v1/sources/{id}`
+6. `DELETE /api/v1/sources/{id}`
+7. `GET /api/v1/targets`
+8. `POST /api/v1/targets`
+9. `PUT /api/v1/targets/{id}`
+10. `DELETE /api/v1/targets/{id}`
+11. `POST /api/v1/jobs/{source_id}/start`
+12. `POST /api/v1/jobs/{source_id}/stop`
+13. `POST /api/v1/jobs/{source_id}/restart`
+14. `GET /api/v1/jobs/{source_id}/status`
+15. `GET /api/v1/jobs/{source_id}/logs`
 
 范围说明：
 
@@ -32,3 +33,4 @@
 5. 服务启动时会自动恢复 `enabled = true` 的 Source 对应任务。
 6. `jobs/{source_id}/logs` 会返回本地日志文件的尾部内容，并对 RTSP 凭据做脱敏处理。
 7. 异常退出任务会按本地固定延迟自动重试，直到达到最大重试次数。
+8. `sources/{id}` 会聚合返回 source、绑定 target、当前 job 状态和最近日志，便于本地排障。

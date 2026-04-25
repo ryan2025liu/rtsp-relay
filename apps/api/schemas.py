@@ -81,5 +81,27 @@ class JobLogsRead(BaseModel):
     logs: str
 
 
+class SourceDetailRead(BaseModel):
+    source: SourceRead
+    target: TargetRead
+    job: JobRead
+    recent_logs: str
+
+
+class SettingsRead(BaseModel):
+    ffmpeg_loglevel: str
+    ffmpeg_extra_args: str
+    max_retry_count: int
+    retry_delay_seconds: float
+    updated_at: str
+
+
+class SettingsUpdate(BaseModel):
+    ffmpeg_loglevel: str = Field(min_length=1, max_length=32)
+    ffmpeg_extra_args: str = Field(default="", max_length=1000)
+    max_retry_count: int = Field(ge=0, le=20)
+    retry_delay_seconds: float = Field(ge=0, le=300)
+
+
 class ErrorResponse(BaseModel):
     detail: str

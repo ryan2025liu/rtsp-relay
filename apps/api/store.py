@@ -98,10 +98,40 @@ class JobRecord:
         }
 
 
+@dataclass
+class SettingsRecord:
+    ffmpeg_loglevel: str
+    ffmpeg_extra_args: str
+    max_retry_count: int
+    retry_delay_seconds: float
+    updated_at: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "ffmpeg_loglevel": self.ffmpeg_loglevel,
+            "ffmpeg_extra_args": self.ffmpeg_extra_args,
+            "max_retry_count": self.max_retry_count,
+            "retry_delay_seconds": self.retry_delay_seconds,
+            "updated_at": self.updated_at,
+        }
+
+
 class SQLiteStore:
-    def __init__(self, database_path: Path, default_rtmp_base_url: str) -> None:
+    def __init__(
+        self,
+        database_path: Path,
+        default_rtmp_base_url: str,
+        default_ffmpeg_loglevel: str = "info",
+        default_ffmpeg_extra_args: str = "",
+        default_max_retry_count: int = 3,
+        default_retry_delay_seconds: float = 5.0,
+    ) -> None:
         self.database_path = database_path
         self.default_rtmp_base_url = default_rtmp_base_url
+        self.default_ffmpeg_loglevel = default_ffmpeg_loglevel
+        self.default_ffmpeg_extra_args = default_ffmpeg_extra_args
+        self.default_max_retry_count = default_max_retry_count
+        self.default_retry_delay_seconds = default_retry_delay_seconds
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
 
     def initialize(self) -> None:
@@ -138,9 +168,19 @@ class SQLiteStore:
                     retry_count INTEGER NOT NULL DEFAULT 0,
                     FOREIGN KEY(source_id) REFERENCES stream_sources(id)
                 );
+
+                CREATE TABLE IF NOT EXISTS relay_settings (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    ffmpeg_loglevel TEXT NOT NULL,
+                    ffmpeg_extra_args TEXT NOT NULL,
+                    max_retry_count INTEGER NOT NULL,
+                    retry_delay_seconds REAL NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
                 """
             )
             self._ensure_default_target(connection)
+            self._ensure_default_settings(connection)
             connection.commit()
 
     def list_sources(self) -> list[SourceRecord]:
@@ -415,6 +455,49 @@ class SQLiteStore:
             retry_count=row["retry_count"],
         )
 
+    def get_settings(self) -> SettingsRecord:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT ffmpeg_loglevel, ffmpeg_extra_args, max_retry_count,
+                       retry_delay_seconds, updated_at
+                FROM relay_settings
+                WHERE id = 1
+                """
+            ).fetchone()
+        assert row is not None
+        return SettingsRecord(
+            ffmpeg_loglevel=row["ffmpeg_loglevel"],
+            ffmpeg_extra_args=row["ffmpeg_extra_args"],
+            max_retry_count=row["max_retry_count"],
+            retry_delay_seconds=row["retry_delay_seconds"],
+            updated_at=row["updated_at"],
+        )
+
+    def update_settings(self, payload: dict[str, Any]) -> SettingsRecord:
+        updated_at = utc_now_iso()
+        with self._connect() as connection:
+            connection.execute(
+                """
+                UPDATE relay_settings
+                SET ffmpeg_loglevel = ?,
+                    ffmpeg_extra_args = ?,
+                    max_retry_count = ?,
+                    retry_delay_seconds = ?,
+                    updated_at = ?
+                WHERE id = 1
+                """,
+                (
+                    payload["ffmpeg_loglevel"],
+                    payload["ffmpeg_extra_args"],
+                    payload["max_retry_count"],
+                    payload["retry_delay_seconds"],
+                    updated_at,
+                ),
+            )
+            connection.commit()
+        return self.get_settings()
+
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.database_path)
         connection.row_factory = sqlite3.Row
@@ -432,6 +515,28 @@ class SQLiteStore:
             VALUES (?, ?, ?, 1)
             """,
             ("default", "Default SRS", self.default_rtmp_base_url),
+        )
+
+    def _ensure_default_settings(self, connection: sqlite3.Connection) -> None:
+        existing = connection.execute(
+            "SELECT id FROM relay_settings WHERE id = 1"
+        ).fetchone()
+        if existing is not None:
+            return
+        connection.execute(
+            """
+            INSERT INTO relay_settings (
+                id, ffmpeg_loglevel, ffmpeg_extra_args, max_retry_count,
+                retry_delay_seconds, updated_at
+            ) VALUES (1, ?, ?, ?, ?, ?)
+            """,
+            (
+                self.default_ffmpeg_loglevel,
+                self.default_ffmpeg_extra_args,
+                self.default_max_retry_count,
+                self.default_retry_delay_seconds,
+                utc_now_iso(),
+            ),
         )
 
     def _row_to_source(self, row: sqlite3.Row) -> SourceRecord:

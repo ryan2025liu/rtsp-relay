@@ -30,6 +30,7 @@ class AppConfig:
     relay_command_template: str
     max_retry_count: int
     retry_delay_seconds: float
+    web_allowed_origins: list[str]
 
 
 def load_config() -> AppConfig:
@@ -42,6 +43,11 @@ def load_config() -> AppConfig:
     relay_command_template = os.getenv("RELAY_COMMAND_TEMPLATE", "")
     max_retry_count = int(os.getenv("RELAY_MAX_RETRY_COUNT", "3"))
     retry_delay_seconds = float(os.getenv("RELAY_RETRY_DELAY_SECONDS", "5"))
+    raw_origins = os.getenv(
+        "RELAY_WEB_ALLOWED_ORIGINS",
+        "http://127.0.0.1:5173,http://localhost:5173",
+    )
+    web_allowed_origins = [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
     return AppConfig(
         database_path=database_path,
         default_rtmp_base_url=default_rtmp_base_url,
@@ -52,4 +58,5 @@ def load_config() -> AppConfig:
         relay_command_template=relay_command_template,
         max_retry_count=max_retry_count,
         retry_delay_seconds=retry_delay_seconds,
+        web_allowed_origins=web_allowed_origins,
     )

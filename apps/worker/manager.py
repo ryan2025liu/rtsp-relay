@@ -10,7 +10,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from io import TextIOWrapper
 import os
@@ -176,6 +176,22 @@ class RelayJobManager:
             source_ids = list(self._definitions.keys() | self._jobs.keys())
         for source_id in source_ids:
             self.remove(source_id)
+
+    def update_runtime_settings(
+        self,
+        ffmpeg_loglevel: str,
+        ffmpeg_extra_args: str,
+        max_retry_count: int,
+        retry_delay_seconds: float,
+    ) -> None:
+        with self._lock:
+            self.config = replace(
+                self.config,
+                ffmpeg_loglevel=ffmpeg_loglevel,
+                ffmpeg_extra_args=ffmpeg_extra_args,
+                max_retry_count=max_retry_count,
+                retry_delay_seconds=retry_delay_seconds,
+            )
 
     def _cleanup_finished_process(self, source_id: str) -> None:
         process = self._processes.get(source_id)

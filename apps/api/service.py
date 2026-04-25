@@ -33,8 +33,38 @@ class RelayService:
     def list_sources(self) -> list[dict[str, object]]:
         return [record.to_dict() for record in self.store.list_sources()]
 
+    def get_source_detail(self, source_id: str, log_tail: int = 100) -> dict[str, object] | None:
+        source = self.store.get_source(source_id)
+        if source is None:
+            return None
+
+        target = self._resolve_target_for_source(source.target_id)
+        job = self.get_job_status(source_id)
+        assert job is not None
+        logs = self.job_manager.read_logs(source_id=source_id, tail=log_tail)
+
+        return {
+            "source": source.to_dict(),
+            "target": target.to_dict(),
+            "job": job,
+            "recent_logs": logs,
+        }
+
     def list_targets(self) -> list[dict[str, object]]:
         return [record.to_dict() for record in self.store.list_targets()]
+
+    def get_settings(self) -> dict[str, object]:
+        return self.store.get_settings().to_dict()
+
+    def update_settings(self, payload: dict[str, object]) -> dict[str, object]:
+        settings = self.store.update_settings(payload)
+        self.job_manager.update_runtime_settings(
+            ffmpeg_loglevel=settings.ffmpeg_loglevel,
+            ffmpeg_extra_args=settings.ffmpeg_extra_args,
+            max_retry_count=settings.max_retry_count,
+            retry_delay_seconds=settings.retry_delay_seconds,
+        )
+        return settings.to_dict()
 
     def create_target(self, payload: dict[str, object]) -> dict[str, object]:
         target = self.store.create_target(payload)

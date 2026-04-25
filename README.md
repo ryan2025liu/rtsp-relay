@@ -104,6 +104,14 @@ docker compose -f docker-compose.local.yml logs -f relay-api
 docker compose -f docker-compose.local.yml logs -f srs
 ```
 
+本地排障时常用接口：
+
+```bash
+curl -sS http://127.0.0.1:18081/api/v1/sources
+curl -sS http://127.0.0.1:18081/api/v1/sources/<source_id>
+curl -sS http://127.0.0.1:18081/api/v1/jobs/<source_id>/logs
+```
+
 运行时数据保存在：
 
 1. `runtime/data`：SQLite

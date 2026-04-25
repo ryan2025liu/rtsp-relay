@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
@@ -25,8 +26,11 @@ from apps.api.schemas import (
     JobLogsRead,
     JobRead,
     SourceCreate,
+    SourceDetailRead,
     SourceRead,
     SourceUpdate,
+    SettingsRead,
+    SettingsUpdate,
     TargetCreate,
     TargetRead,
     TargetUpdate,
@@ -41,6 +45,10 @@ def build_service(config: AppConfig | None = None) -> RelayService:
     store = SQLiteStore(
         database_path=app_config.database_path,
         default_rtmp_base_url=app_config.default_rtmp_base_url,
+        default_ffmpeg_loglevel=app_config.ffmpeg_loglevel,
+        default_ffmpeg_extra_args=app_config.ffmpeg_extra_args,
+        default_max_retry_count=app_config.max_retry_count,
+        default_retry_delay_seconds=app_config.retry_delay_seconds,
     )
     manager = RelayJobManager(
         RelayRuntimeConfig(
@@ -74,6 +82,13 @@ def create_app(service: RelayService | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     app.state.relay_service = relay_service
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=app_config.web_allowed_origins,
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     @app.get("/health", response_model=HealthResponse)
     def health() -> HealthResponse:
@@ -85,6 +100,13 @@ def create_app(service: RelayService | None = None) -> FastAPI:
             SourceRead.model_validate(item)
             for item in relay_service.list_sources()
         ]
+
+    @app.get("/api/v1/sources/{source_id}", response_model=SourceDetailRead)
+    def get_source_detail(source_id: str, log_tail: int = 100) -> SourceDetailRead:
+        detail = relay_service.get_source_detail(source_id=source_id, log_tail=log_tail)
+        if detail is None:
+            raise HTTPException(status_code=404, detail="source not found")
+        return SourceDetailRead.model_validate(detail)
 
     @app.post("/api/v1/sources", response_model=SourceRead, status_code=201)
     def create_source(payload: SourceCreate) -> SourceRead:
@@ -107,6 +129,15 @@ def create_app(service: RelayService | None = None) -> FastAPI:
     @app.get("/api/v1/targets", response_model=list[TargetRead])
     def list_targets() -> list[TargetRead]:
         return [TargetRead.model_validate(item) for item in relay_service.list_targets()]
+
+    @app.get("/api/v1/settings", response_model=SettingsRead)
+    def get_settings() -> SettingsRead:
+        return SettingsRead.model_validate(relay_service.get_settings())
+
+    @app.put("/api/v1/settings", response_model=SettingsRead)
+    def update_settings(payload: SettingsUpdate) -> SettingsRead:
+        updated = relay_service.update_settings(payload.model_dump())
+        return SettingsRead.model_validate(updated)
 
     @app.post("/api/v1/targets", response_model=TargetRead, status_code=201)
     def create_target(payload: TargetCreate) -> TargetRead:

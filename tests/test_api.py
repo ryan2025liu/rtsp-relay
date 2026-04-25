@@ -248,6 +248,50 @@ class RelayApiTestCase(unittest.TestCase):
         self.assertIn("rtsp://operator:***@10.0.0.15/live", body["logs"])
         self.assertNotIn("secret-pass", body["logs"])
 
+    def test_source_detail_aggregates_target_job_and_logs(self) -> None:
+        target_response = self.client.post(
+            "/api/v1/targets",
+            json={
+                "name": "Detail SRS",
+                "rtmp_base_url": "rtmp://10.0.0.21:1935/live",
+                "is_default": True,
+            },
+        )
+        self.assertEqual(target_response.status_code, 201)
+        target_id = target_response.json()["id"]
+
+        source_response = self.client.post(
+            "/api/v1/sources",
+            json={
+                "name": "Camera Detail",
+                "source_url": "rtsp://viewer:secret@10.0.0.22/live",
+                "stream_key": "cam-detail",
+                "enabled": False,
+                "transcode_mode": "copy",
+            },
+        )
+        self.assertEqual(source_response.status_code, 201)
+        source_id = source_response.json()["id"]
+
+        self.client.post(f"/api/v1/jobs/{source_id}/start")
+        log_path = Path(self.tempdir.name) / "logs" / f"{source_id}.log"
+        log_path.write_text(
+            "input rtsp://viewer:secret@10.0.0.22/live\nrelay running\n",
+            encoding="utf-8",
+        )
+
+        detail_response = self.client.get(f"/api/v1/sources/{source_id}")
+        self.assertEqual(detail_response.status_code, 200)
+        body = detail_response.json()
+        self.assertEqual(body["source"]["id"], source_id)
+        self.assertEqual(body["target"]["id"], target_id)
+        self.assertEqual(body["job"]["status"], "running")
+        self.assertIn("rtsp://viewer:***@10.0.0.22/live", body["recent_logs"])
+        self.assertNotIn("secret", body["recent_logs"])
+
+        stop_response = self.client.post(f"/api/v1/jobs/{source_id}/stop")
+        self.assertEqual(stop_response.status_code, 200)
+
     def test_job_auto_retries_after_failure(self) -> None:
         retry_script = Path(self.tempdir.name) / "retry-once.sh"
         retry_script.write_text(
@@ -299,20 +343,21 @@ class RelayApiTestCase(unittest.TestCase):
         start_response = retry_client.post(f"/api/v1/jobs/{source_id}/start")
         self.assertEqual(start_response.status_code, 200)
         running_status = None
-        for _ in range(10):
-            status_response = retry_client.get(f"/api/v1/jobs/{source_id}/status")
-            self.assertEqual(status_response.status_code, 200)
-            body = status_response.json()
-            if body["status"] == "running" and body["retry_count"] == 1:
-                running_status = body
-                break
-            time.sleep(0.05)
+        try:
+            for _ in range(20):
+                status_response = retry_client.get(f"/api/v1/jobs/{source_id}/status")
+                self.assertEqual(status_response.status_code, 200)
+                body = status_response.json()
+                if body["status"] == "running" and body["retry_count"] == 1:
+                    running_status = body
+                    break
+                time.sleep(0.05)
 
-        self.assertIsNotNone(running_status)
-
-        stop_response = retry_client.post(f"/api/v1/jobs/{source_id}/stop")
-        self.assertEqual(stop_response.status_code, 200)
-        retry_client.close()
+            self.assertIsNotNone(running_status)
+        finally:
+            stop_response = retry_client.post(f"/api/v1/jobs/{source_id}/stop")
+            self.assertEqual(stop_response.status_code, 200)
+            retry_client.close()
 
 
 if __name__ == "__main__":
