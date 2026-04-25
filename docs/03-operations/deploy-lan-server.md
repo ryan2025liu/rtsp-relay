@@ -23,12 +23,14 @@ ss -tlnp | egrep ':18081 |:18088 ' || true
 
 ## 2. 在服务器上落盘
 
+约定部署目录为 **`~/websites/rtsp-relay/`**（可改，以下路径按此书写）。
+
 ```bash
 ssh lx@192.168.107.230
-mkdir -p ~/app && cd ~/app
-# 任选：git clone <你的仓库URL> skybrain-rtsp-relay
-# 或从开发机: rsync -av --filter=':- .git' ./skybrain-rtsp-relay/ lx@192.168.107.230:~/app/skybrain-rtsp-relay/
-cd skybrain-rtsp-relay
+mkdir -p ~/websites && cd ~/websites
+# 任选：git clone <你的仓库URL> rtsp-relay
+# 或从开发机: rsync -av --filter=':- .git' ./rtsp-relay/ lx@192.168.107.230:~/websites/rtsp-relay/
+cd rtsp-relay
 ```
 
 ## 3. 环境变量

@@ -150,7 +150,7 @@ curl -sS http://127.0.0.1:18081/api/v1/jobs/<source_id>/logs
 
 ## 服务器部署（内网固定主机）
 
-用于将本栈放到内网机（如 `lx@192.168.107.230`）长期运行：使用 **`docker-compose.server.yml`**。镜像内用 Nginx 只提供**静态**管理页（**宿主机不必再装** Nginx/反代；直连端口即可），与本地 Vite 开发服不同。详见 `docs/03-operations/deploy-lan-server.md`。
+用于将本栈放到内网机（如 `lx@192.168.107.230`）长期运行：使用 **`docker-compose.server.yml`**。推荐将仓库放在 **`~/websites/rtsp-relay/`** 下再执行 compose。镜像内用 Nginx 只提供**静态**管理页（**宿主机不必再装** Nginx/反代；直连端口即可），与本地 Vite 开发服不同。详见 `docs/03-operations/deploy-lan-server.md`。
 
 1. 一般**不必**再写 systemd 管理本应用：容器为 `restart: unless-stopped`，宿主机 `docker` 服务开机自启即可在重启后自动拉起。
 

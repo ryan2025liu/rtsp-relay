@@ -17,4 +17,4 @@
 7. `relay-web` 容器启动时会执行 `npm ci`，确保前端依赖自动和锁文件对齐
 8. 预览链接必须使用 `VITE_API_BASE_URL` 对应的 API origin，不能相对写成前端 origin
 
-服务器单机部署见 **`deploy-lan-server.md`**（`docker-compose.server.yml` + `deploy/env.server.example` + `apps/web/Dockerfile.prod`）。
+服务器单机部署见 **`deploy-lan-server.md`**（`docker-compose.server.yml` + `deploy/env.server.example` + `apps/web/Dockerfile.prod`）。推荐部署目录 **`~/websites/rtsp-relay/`**。
