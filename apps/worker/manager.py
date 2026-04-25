@@ -20,10 +20,21 @@ import shlex
 import signal
 import subprocess
 from threading import RLock, Timer
+from urllib.parse import quote
 
 
 def utc_now_iso() -> str:
     return datetime.now(tz=UTC).replace(microsecond=0).isoformat()
+
+
+def build_rtmp_publish_url(rtmp_base_url: str, stream_key: str, playback_vhost: str) -> str:
+    """Build SRS-style RTMP publish URL; optional vhost query matches HTTP playback vhost."""
+    out = f"{rtmp_base_url.rstrip('/')}/{stream_key}"
+    v = (playback_vhost or "").strip()
+    if not v:
+        return out
+    joiner = "&" if "?" in out else "?"
+    return f"{out}{joiner}vhost={quote(v, safe='')}"
 
 
 RTSP_CREDENTIALS_PATTERN = re.compile(r"([a-zA-Z][a-zA-Z0-9+\-.]*://)([^/@:\s]+):([^/@\s]+)@")
@@ -53,6 +64,7 @@ class RelaySource:
 class RelayTarget:
     id: str
     rtmp_base_url: str
+    playback_vhost: str = ""
 
 
 @dataclass
@@ -222,7 +234,9 @@ class RelayJobManager:
 
     def _build_command(self, source: RelaySource, target: RelayTarget) -> list[str]:
         normalized_source_url = self._normalize_source_url(source.source_url)
-        rtmp_out = f"{target.rtmp_base_url.rstrip('/')}/{source.stream_key}"
+        rtmp_out = build_rtmp_publish_url(
+            target.rtmp_base_url, source.stream_key, target.playback_vhost
+        )
         if self.config.command_template:
             return shlex.split(
                 self.config.command_template.format(

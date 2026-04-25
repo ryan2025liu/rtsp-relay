@@ -11,9 +11,14 @@
 from contextlib import asynccontextmanager
 import sys
 from pathlib import Path
+import re
+from urllib.parse import urlparse
 
-from fastapi import FastAPI, HTTPException
+import httpx
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response, StreamingResponse
+from starlette.background import BackgroundTask
 
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
@@ -64,6 +69,54 @@ def build_service(config: AppConfig | None = None) -> RelayService:
     relay_service = RelayService(store=store, job_manager=manager)
     relay_service.app_config = app_config
     return relay_service
+
+
+def build_preview_upstream_url(target_rtmp_base_url: str, proxy_path: str, query: str) -> str:
+    parsed = urlparse(target_rtmp_base_url)
+    host = parsed.hostname or "127.0.0.1"
+    upstream_url = f"http://{host}:8080/{proxy_path.lstrip('/')}"
+    if query:
+        upstream_url = f"{upstream_url}?{query}"
+    return upstream_url
+
+
+def filter_preview_headers(headers: httpx.Headers) -> dict[str, str]:
+    allowed_headers = {
+        "content-type",
+        "content-length",
+        "cache-control",
+        "accept-ranges",
+        "content-range",
+        "last-modified",
+        "etag",
+    }
+    return {
+        key: value
+        for key, value in headers.items()
+        if key.lower() in allowed_headers
+    }
+
+
+def rewrite_hls_manifest(manifest_text: str, target_id: str) -> str:
+    proxy_prefix = f"/api/v1/preview/{target_id}"
+    rewritten_lines: list[str] = []
+    for line in manifest_text.splitlines():
+        if line.startswith("#"):
+            line = re.sub(
+                r'URI="(/[^"]+)"',
+                lambda match: f'URI="{proxy_prefix}{match.group(1)}"',
+                line,
+            )
+        elif line.startswith("/"):
+            if ".m3u8" in line:
+                line = f"{proxy_prefix}{line}"
+            else:
+                line = line.lstrip("/")
+        elif line:
+            if ".m3u8" in line:
+                line = f"{proxy_prefix}/{line}"
+        rewritten_lines.append(line)
+    return "\n".join(rewritten_lines)
 
 
 def create_app(service: RelayService | None = None) -> FastAPI:
@@ -133,6 +186,13 @@ def create_app(service: RelayService | None = None) -> FastAPI:
     def list_targets() -> list[TargetRead]:
         return [TargetRead.model_validate(item) for item in relay_service.list_targets()]
 
+    @app.get("/api/v1/targets/{target_id}", response_model=TargetRead)
+    def get_target(target_id: str) -> TargetRead:
+        target = relay_service.get_target(target_id)
+        if target is None:
+            raise HTTPException(status_code=404, detail="target not found")
+        return TargetRead.model_validate(target)
+
     @app.get("/api/v1/settings", response_model=SettingsRead)
     def get_settings() -> SettingsRead:
         return SettingsRead.model_validate(relay_service.get_settings())
@@ -159,6 +219,81 @@ def create_app(service: RelayService | None = None) -> FastAPI:
         deleted = relay_service.delete_target(target_id)
         if not deleted:
             raise HTTPException(status_code=404, detail="target not found or protected")
+
+    @app.api_route("/api/v1/preview/{target_id}/{proxy_path:path}", methods=["GET", "HEAD"])
+    async def preview_proxy(
+        target_id: str,
+        proxy_path: str,
+        request: Request,
+    ) -> Response:
+        target = relay_service.get_target(target_id)
+        if target is None:
+            raise HTTPException(status_code=404, detail="target not found")
+
+        upstream_query = request.url.query
+        if target.get("playback_vhost") and "vhost=" not in upstream_query:
+            upstream_query = (
+                f"{upstream_query}&vhost={target['playback_vhost']}"
+                if upstream_query
+                else f"vhost={target['playback_vhost']}"
+            )
+
+        upstream_url = build_preview_upstream_url(
+            target_rtmp_base_url=target["rtmp_base_url"],
+            proxy_path=proxy_path,
+            query=upstream_query,
+        )
+
+        client = httpx.AsyncClient(follow_redirects=True, timeout=None)
+        upstream_request = client.build_request(
+            request.method,
+            upstream_url,
+            headers={
+                key: value
+                for key, value in request.headers.items()
+                if key.lower() in {"range", "user-agent", "accept", "referer"}
+            },
+        )
+        upstream_response = await client.send(upstream_request, stream=True)
+
+        if request.method == "HEAD":
+            await upstream_response.aclose()
+            await client.aclose()
+            return Response(
+                status_code=upstream_response.status_code,
+                headers=filter_preview_headers(upstream_response.headers),
+            )
+
+        content_type = upstream_response.headers.get("content-type", "")
+        if proxy_path.endswith(".m3u8") or "mpegurl" in content_type:
+            manifest_text = (await upstream_response.aread()).decode("utf-8", errors="replace")
+            await upstream_response.aclose()
+            await client.aclose()
+            rewritten_manifest = rewrite_hls_manifest(manifest_text, target_id)
+            manifest_headers = filter_preview_headers(upstream_response.headers)
+            manifest_headers.pop("content-length", None)
+            return Response(
+                content=rewritten_manifest,
+                status_code=upstream_response.status_code,
+                media_type="application/vnd.apple.mpegurl",
+                headers=manifest_headers,
+            )
+
+        async def stream_body():
+            async for chunk in upstream_response.aiter_bytes():
+                yield chunk
+
+        async def close_stream() -> None:
+            await upstream_response.aclose()
+            await client.aclose()
+
+        return StreamingResponse(
+            stream_body(),
+            status_code=upstream_response.status_code,
+            headers=filter_preview_headers(upstream_response.headers),
+            media_type=upstream_response.headers.get("content-type"),
+            background=BackgroundTask(close_stream),
+        )
 
     @app.post("/api/v1/jobs/{source_id}/start", response_model=JobRead)
     def start_job(source_id: str) -> JobRead:

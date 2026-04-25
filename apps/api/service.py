@@ -53,6 +53,12 @@ class RelayService:
     def list_targets(self) -> list[dict[str, object]]:
         return [record.to_dict() for record in self.store.list_targets()]
 
+    def get_target(self, target_id: str) -> dict[str, object] | None:
+        target = self.store.get_target(target_id)
+        if target is None:
+            return None
+        return target.to_dict()
+
     def get_settings(self) -> dict[str, object]:
         return self.store.get_settings().to_dict()
 
@@ -129,7 +135,11 @@ class RelayService:
                 stream_key=source.stream_key,
                 transcode_mode=source.transcode_mode,
             ),
-            target=RelayTarget(id=target.id, rtmp_base_url=target.rtmp_base_url),
+            target=RelayTarget(
+                id=target.id,
+                rtmp_base_url=target.rtmp_base_url,
+                playback_vhost=target.playback_vhost,
+            ),
         )
         stored = self.store.upsert_job(
             JobRecord(
@@ -198,7 +208,11 @@ class RelayService:
                 stream_key=source.stream_key,
                 transcode_mode=source.transcode_mode,
             ),
-            target=RelayTarget(id=target.id, rtmp_base_url=target.rtmp_base_url),
+            target=RelayTarget(
+                id=target.id,
+                rtmp_base_url=target.rtmp_base_url,
+                playback_vhost=target.playback_vhost,
+            ),
         )
         stored = self.store.upsert_job(
             JobRecord(

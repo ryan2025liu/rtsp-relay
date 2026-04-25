@@ -6,6 +6,7 @@
 [PROTOCOL]:
   1. Keep models focused on local single-node relay control.
   2. Avoid premature fields for non-MVP features.
+  3. Target payloads may carry playback configuration used by the Web preview links.
 """
 
 from typing import Literal
@@ -51,6 +52,7 @@ class SourceRead(SourceBase):
 class TargetBase(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     rtmp_base_url: str = Field(min_length=1, max_length=1000)
+    playback_vhost: str = Field(default="", max_length=200)
     is_default: bool = False
 
 

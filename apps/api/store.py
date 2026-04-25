@@ -6,6 +6,7 @@
 [PROTOCOL]:
   1. Persist only the minimum data needed for local Docker runtime.
   2. Keep schema simple enough to inspect and recover manually.
+  3. Keep SRS playback metadata alongside target rows so preview URLs stay correct.
 """
 
 from __future__ import annotations
@@ -65,6 +66,7 @@ class TargetRecord:
     id: str
     name: str
     rtmp_base_url: str
+    playback_vhost: str
     is_default: bool
 
     def to_dict(self) -> dict[str, Any]:
@@ -72,6 +74,7 @@ class TargetRecord:
             "id": self.id,
             "name": self.name,
             "rtmp_base_url": self.rtmp_base_url,
+            "playback_vhost": self.playback_vhost,
             "is_default": self.is_default,
         }
 
@@ -142,6 +145,7 @@ class SQLiteStore:
                     id TEXT PRIMARY KEY,
                     name TEXT NOT NULL,
                     rtmp_base_url TEXT NOT NULL,
+                    playback_vhost TEXT NOT NULL DEFAULT '',
                     is_default INTEGER NOT NULL DEFAULT 0
                 );
 
@@ -179,6 +183,7 @@ class SQLiteStore:
                 );
                 """
             )
+            self._ensure_target_playback_vhost_column(connection)
             self._ensure_default_target(connection)
             self._ensure_default_settings(connection)
             connection.commit()
@@ -296,7 +301,7 @@ class SQLiteStore:
         with self._connect() as connection:
             row = connection.execute(
                 """
-                SELECT id, name, rtmp_base_url, is_default
+                SELECT id, name, rtmp_base_url, playback_vhost, is_default
                 FROM relay_targets
                 WHERE is_default = 1
                 LIMIT 1
@@ -307,6 +312,7 @@ class SQLiteStore:
             id=row["id"],
             name=row["name"],
             rtmp_base_url=row["rtmp_base_url"],
+            playback_vhost=row["playback_vhost"],
             is_default=bool(row["is_default"]),
         )
 
@@ -314,7 +320,7 @@ class SQLiteStore:
         with self._connect() as connection:
             rows = connection.execute(
                 """
-                SELECT id, name, rtmp_base_url, is_default
+                SELECT id, name, rtmp_base_url, playback_vhost, is_default
                 FROM relay_targets
                 ORDER BY is_default DESC, name ASC
                 """
@@ -325,7 +331,7 @@ class SQLiteStore:
         with self._connect() as connection:
             row = connection.execute(
                 """
-                SELECT id, name, rtmp_base_url, is_default
+                SELECT id, name, rtmp_base_url, playback_vhost, is_default
                 FROM relay_targets
                 WHERE id = ?
                 """,
@@ -341,13 +347,14 @@ class SQLiteStore:
                 connection.execute("UPDATE relay_targets SET is_default = 0")
             connection.execute(
                 """
-                INSERT INTO relay_targets (id, name, rtmp_base_url, is_default)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO relay_targets (id, name, rtmp_base_url, playback_vhost, is_default)
+                VALUES (?, ?, ?, ?, ?)
                 """,
                 (
                     target_id,
                     payload["name"],
                     payload["rtmp_base_url"],
+                    payload.get("playback_vhost", ""),
                     int(is_default),
                 ),
             )
@@ -368,12 +375,13 @@ class SQLiteStore:
             connection.execute(
                 """
                 UPDATE relay_targets
-                SET name = ?, rtmp_base_url = ?, is_default = ?
+                SET name = ?, rtmp_base_url = ?, playback_vhost = ?, is_default = ?
                 WHERE id = ?
                 """,
                 (
                     payload["name"],
                     payload["rtmp_base_url"],
+                    payload.get("playback_vhost", ""),
                     int(is_default),
                     target_id,
                 ),
@@ -511,10 +519,19 @@ class SQLiteStore:
             return
         connection.execute(
             """
-            INSERT INTO relay_targets (id, name, rtmp_base_url, is_default)
-            VALUES (?, ?, ?, 1)
+            INSERT INTO relay_targets (id, name, rtmp_base_url, playback_vhost, is_default)
+            VALUES (?, ?, ?, ?, 1)
             """,
-            ("default", "Default SRS", self.default_rtmp_base_url),
+            ("default", "Default SRS", self.default_rtmp_base_url, ""),
+        )
+
+    def _ensure_target_playback_vhost_column(self, connection: sqlite3.Connection) -> None:
+        rows = connection.execute("PRAGMA table_info(relay_targets)").fetchall()
+        columns = {row["name"] for row in rows}
+        if "playback_vhost" in columns:
+            return
+        connection.execute(
+            "ALTER TABLE relay_targets ADD COLUMN playback_vhost TEXT NOT NULL DEFAULT ''"
         )
 
     def _ensure_default_settings(self, connection: sqlite3.Connection) -> None:
@@ -557,5 +574,6 @@ class SQLiteStore:
             id=row["id"],
             name=row["name"],
             rtmp_base_url=row["rtmp_base_url"],
+            playback_vhost=row["playback_vhost"],
             is_default=bool(row["is_default"]),
         )

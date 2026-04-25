@@ -1,4 +1,5 @@
-import { startTransition, useDeferredValue, useEffect, useMemo, useState } from "react";
+import { startTransition, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import Hls from "hls.js";
 import { api } from "./api";
 
 const emptySourceForm = {
@@ -13,6 +14,7 @@ const emptySourceForm = {
 const emptyTargetForm = {
   name: "",
   rtmp_base_url: "",
+  playback_vhost: "",
   is_default: false,
 };
 
@@ -28,19 +30,193 @@ function buildPreviewUrls(detail) {
     return null;
   }
 
-  const rtmpUrl = `${detail.target.rtmp_base_url.replace(/\/$/, "")}/${detail.source.stream_key}`;
+  const rtmpBase = `${detail.target.rtmp_base_url.replace(/\/$/, "")}/${detail.source.stream_key}`;
+  const vhostQ = detail.target.playback_vhost
+    ? `${rtmpBase.includes("?") ? "&" : "?"}vhost=${encodeURIComponent(detail.target.playback_vhost)}`
+    : "";
+  const rtmpUrl = `${rtmpBase}${vhostQ}`;
   const match = detail.target.rtmp_base_url.match(/^rtmp:\/\/([^/:]+)(?::(\d+))?(\/.*)?$/);
   if (!match) {
     return { rtmpUrl, flvUrl: "", hlsUrl: "" };
   }
 
-  const host = match[1];
   const path = (match[3] || "/live").replace(/\/$/, "");
+  const vhostQuery = detail.target.playback_vhost
+    ? `?vhost=${encodeURIComponent(detail.target.playback_vhost)}`
+    : "";
+  const proxyBasePath = `${api.baseUrl}/api/v1/preview/${detail.target.id}${path}`;
   return {
     rtmpUrl,
-    flvUrl: `http://${host}:8080${path}/${detail.source.stream_key}.flv`,
-    hlsUrl: `http://${host}:8080${path}/${detail.source.stream_key}.m3u8`,
+    flvUrl: `${proxyBasePath}/${detail.source.stream_key}.flv${vhostQuery}`,
+    hlsUrl: `${proxyBasePath}/${detail.source.stream_key}.m3u8${vhostQuery}`,
   };
+}
+
+function StreamPreviewPlayer({ hlsUrl, title }) {
+  const videoRef = useRef(null);
+  const [playbackState, setPlaybackState] = useState("loading");
+  const [playbackError, setPlaybackError] = useState("");
+  const [reloadToken, setReloadToken] = useState(0);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !hlsUrl) {
+      return undefined;
+    }
+
+    let hls = null;
+    let mounted = true;
+
+    const attemptPlay = async () => {
+      try {
+        await video.play();
+        if (mounted) {
+          setPlaybackState("playing");
+        }
+      } catch {
+        // Autoplay can still be blocked by the browser; controls remain available.
+        if (mounted) {
+          setPlaybackState("paused");
+        }
+      }
+    };
+
+    const handlePlaying = () => mounted && setPlaybackState("playing");
+    const handlePause = () => mounted && setPlaybackState("paused");
+    const handleWaiting = () => mounted && setPlaybackState("buffering");
+    const handleError = () => mounted && setPlaybackError("播放器发生错误，请重载后再试。");
+
+    video.addEventListener("playing", handlePlaying);
+    video.addEventListener("pause", handlePause);
+    video.addEventListener("waiting", handleWaiting);
+    video.addEventListener("error", handleError);
+    setPlaybackError("");
+    setPlaybackState("loading");
+
+    if (video.canPlayType("application/vnd.apple.mpegurl")) {
+      video.src = hlsUrl;
+      void attemptPlay();
+      return () => {
+        mounted = false;
+        video.removeEventListener("playing", handlePlaying);
+        video.removeEventListener("pause", handlePause);
+        video.removeEventListener("waiting", handleWaiting);
+        video.removeEventListener("error", handleError);
+        video.pause();
+        video.removeAttribute("src");
+        video.load();
+      };
+    }
+
+    if (Hls.isSupported()) {
+      hls = new Hls({ enableWorker: true });
+      hls.on(Hls.Events.ERROR, (_event, data) => {
+        if (!mounted) {
+          return;
+        }
+        if (!data?.fatal) {
+          setPlaybackState("buffering");
+          return;
+        }
+
+        if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+          setPlaybackState("buffering");
+          hls?.startLoad();
+          return;
+        }
+
+        if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+          setPlaybackState("buffering");
+          hls?.recoverMediaError();
+          return;
+        }
+
+        setPlaybackState("error");
+        setPlaybackError(data?.details || data?.type || "HLS 播放失败");
+      });
+      hls.loadSource(hlsUrl);
+      hls.attachMedia(video);
+      hls.on(Hls.Events.MANIFEST_PARSED, attemptPlay);
+      return () => {
+        mounted = false;
+        video.removeEventListener("playing", handlePlaying);
+        video.removeEventListener("pause", handlePause);
+        video.removeEventListener("waiting", handleWaiting);
+        video.removeEventListener("error", handleError);
+        hls?.destroy();
+      };
+    }
+
+    setPlaybackState("error");
+    setPlaybackError("当前浏览器不支持 HLS 播放，请使用支持 MSE 的浏览器。");
+    return () => {
+      mounted = false;
+      video.removeEventListener("playing", handlePlaying);
+      video.removeEventListener("pause", handlePause);
+      video.removeEventListener("waiting", handleWaiting);
+      video.removeEventListener("error", handleError);
+    };
+  }, [hlsUrl, reloadToken]);
+
+  function handlePlay() {
+    const video = videoRef.current;
+    if (!video) {
+      return;
+    }
+    void video.play();
+  }
+
+  function handlePause() {
+    const video = videoRef.current;
+    if (!video) {
+      return;
+    }
+    video.pause();
+  }
+
+  function handleReload() {
+    setPlaybackError("");
+    setPlaybackState("loading");
+    setReloadToken((current) => current + 1);
+  }
+
+  return (
+    <div className="preview-player">
+      <video ref={videoRef} controls muted playsInline autoPlay className="preview-video" />
+      <div className="preview-player-meta">
+        <strong>{title}</strong>
+        <p>默认使用 HLS 播放；若无画面，请先检查 `playback_vhost` 和编码格式。</p>
+      </div>
+      <div className="preview-toolbar">
+        <div className="preview-status">
+          <span className={`status-dot ${playbackState}`} />
+          <strong>
+            {playbackState === "playing"
+              ? "正在播放"
+              : playbackState === "buffering"
+                ? "缓冲中"
+                : playbackState === "error"
+                  ? "播放失败"
+                  : playbackState === "paused"
+                    ? "已暂停"
+                    : "加载中"}
+          </strong>
+        </div>
+        <div className="preview-controls">
+          <button type="button" className="ghost-button small" onClick={handlePlay}>
+            播放
+          </button>
+          <button type="button" className="ghost-button small" onClick={handlePause}>
+            暂停
+          </button>
+          <button type="button" className="ghost-button small" onClick={handleReload}>
+            重载
+          </button>
+        </div>
+      </div>
+      {playbackError ? <div className="preview-error">{playbackError}</div> : null}
+    </div>
+  );
 }
 
 function mergeSourceStatuses(sources, statuses) {
@@ -450,6 +626,7 @@ export default function App() {
               <div className="detail-topline">
                 <InfoBadge label="Stream Key" value={detail.source.stream_key} />
                 <InfoBadge label="SRS 目标" value={detail.target.name} />
+                <InfoBadge label="播放 vhost" value={detail.target.playback_vhost || "-"} />
                 <InfoBadge label="最近更新时间" value={detail.job.updated_at} />
               </div>
 
@@ -552,16 +729,30 @@ export default function App() {
                   </div>
                 </div>
                 <div className="preview-window">
+                  {detail.recent_logs && /Error opening output/i.test(detail.recent_logs) ? (
+                    <div className="preview-push-warn" role="status">
+                      最近日志显示 RTMP 推流未成功建立。在无有效源流时 HLS
+                      预览会失败。请确认本机/容器到 SRS
+                      的网络、端口与
+                      vhost，并在修改目标后点击「重启」使推流参数生效。
+                    </div>
+                  ) : null}
                   <div className="preview-frame">
-                    <strong>{detail.source.name}</strong>
-                    <p>当前版本先提供推流地址和候选预览 URL。</p>
-                    <StatusPill status={detail.job.status} />
+                    {previewUrls?.hlsUrl ? (
+                      <StreamPreviewPlayer hlsUrl={previewUrls.hlsUrl} title={detail.source.name} />
+                    ) : (
+                      <div className="preview-empty">
+                        <strong>{detail.source.name}</strong>
+                        <p>当前没有可用的 HLS 预览地址。</p>
+                        <StatusPill status={detail.job.status} />
+                      </div>
+                    )}
                   </div>
                   {previewUrls ? (
                     <div className="preview-links">
+                      <PreviewLink label="HLS 播放" href={previewUrls.hlsUrl} />
                       <PreviewLink label="RTMP 推流" href={previewUrls.rtmpUrl} />
                       <PreviewLink label="HTTP-FLV 候选" href={previewUrls.flvUrl} />
-                      <PreviewLink label="HLS 候选" href={previewUrls.hlsUrl} />
                     </div>
                   ) : null}
                 </div>
@@ -695,6 +886,16 @@ export default function App() {
                 required
               />
             </label>
+            <label>
+              播放 vhost
+              <input
+                value={targetForm.playback_vhost}
+                onChange={(event) =>
+                  setTargetForm((current) => ({ ...current, playback_vhost: event.target.value }))
+                }
+                placeholder="vid-2162315"
+              />
+            </label>
             <label className="toggle-field">
               <span>设为默认目标</span>
               <input
@@ -753,6 +954,7 @@ function TargetCard({ target, onRefresh, onError }) {
   const [form, setForm] = useState({
     name: target.name,
     rtmp_base_url: target.rtmp_base_url,
+    playback_vhost: target.playback_vhost || "",
     is_default: target.is_default,
   });
 
@@ -760,6 +962,7 @@ function TargetCard({ target, onRefresh, onError }) {
     setForm({
       name: target.name,
       rtmp_base_url: target.rtmp_base_url,
+      playback_vhost: target.playback_vhost || "",
       is_default: target.is_default,
     });
   }, [target]);
@@ -778,6 +981,7 @@ function TargetCard({ target, onRefresh, onError }) {
     <form className="target-card" onSubmit={handleSubmit}>
       <div className="target-card-title">
         <strong>{target.name}</strong>
+        {target.playback_vhost ? <span className="mini-tag">vhost {target.playback_vhost}</span> : null}
         {target.is_default ? <span className="mini-tag">默认</span> : null}
       </div>
       <label>
@@ -789,6 +993,16 @@ function TargetCard({ target, onRefresh, onError }) {
         <input
           value={form.rtmp_base_url}
           onChange={(event) => setForm((current) => ({ ...current, rtmp_base_url: event.target.value }))}
+        />
+      </label>
+      <label>
+        播放 vhost
+        <input
+          value={form.playback_vhost}
+          onChange={(event) =>
+            setForm((current) => ({ ...current, playback_vhost: event.target.value }))
+          }
+          placeholder="vid-2162315"
         />
       </label>
       <label className="toggle-field">

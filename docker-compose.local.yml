@@ -7,32 +7,36 @@ services:
     environment:
       RELAY_DB_PATH: /app/runtime/data/relay.db
       RELAY_RUNTIME_LOG_DIR: /app/runtime/logs
-      DEFAULT_RTMP_BASE_URL: ${DEFAULT_RTMP_BASE_URL:-rtmp://srs:1935/live}
+      DEFAULT_RTMP_BASE_URL: ${DEFAULT_RTMP_BASE_URL:-rtmp://lan-srs-host:1935/live}
       RELAY_FFMPEG_BIN: ${RELAY_FFMPEG_BIN:-ffmpeg}
       RELAY_FFMPEG_LOGLEVEL: ${RELAY_FFMPEG_LOGLEVEL:-info}
       RELAY_FFMPEG_EXTRA_ARGS: ${RELAY_FFMPEG_EXTRA_ARGS:-}
       RELAY_MAX_RETRY_COUNT: ${RELAY_MAX_RETRY_COUNT:-3}
       RELAY_RETRY_DELAY_SECONDS: ${RELAY_RETRY_DELAY_SECONDS:-5}
+      RELAY_WEB_ALLOWED_ORIGINS: ${RELAY_WEB_ALLOWED_ORIGINS:-http://127.0.0.1:5173,http://localhost:5173}
     ports:
       - "${RELAY_API_PORT:-18081}:18081"
     volumes:
       - ./runtime/data:/app/runtime/data
       - ./runtime/logs:/app/runtime/logs
       - ./runtime/tmp:/app/runtime/tmp
-    depends_on:
-      srs:
-        condition: service_started
     restart: unless-stopped
 
-  srs:
-    image: ${SRS_IMAGE:-ossrs/srs:5}
-    container_name: ${SRS_CONTAINER_NAME:-skybrain-relay-srs}
+  relay-web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    container_name: ${RELAY_WEB_CONTAINER_NAME:-skybrain-relay-web}
+    environment:
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://127.0.0.1:18081}
     ports:
-      - "${SRS_RTMP_PORT:-1935}:1935"
-      - "${SRS_HTTP_PORT:-8080}:8080"
-      - "${SRS_API_PORT:-1985}:1985"
-    command:
-      - ./objs/srs
-      - -c
-      - conf/docker.conf
+      - "${RELAY_WEB_PORT:-5173}:5173"
+    volumes:
+      - ./apps/web:/app
+      - relay-web-node-modules:/app/node_modules
+    depends_on:
+      - relay-api
     restart: unless-stopped
+
+volumes:
+  relay-web-node-modules:

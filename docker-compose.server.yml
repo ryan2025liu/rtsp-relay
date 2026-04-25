@@ -1,0 +1,45 @@
+# 服务器单机部署（与 `docker-compose.local.yml` 并列，不含源码热挂载）
+# 用法: docker compose -f docker-compose.server.yml --env-file deploy/.env.server up -d --build
+#
+# SRS 与本栈同机时：DEFAULT_RTMP_BASE_URL 请用宿主机在局域网可访问的地址
+# (例如 rtmp://192.168.107.230:1935/live)，勿用 127.0.0.1（容器内指向自身）。
+
+services:
+  relay-api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    image: ${RELAY_API_IMAGE_NAME:-skybrain/relay-api:server}
+    container_name: ${RELAY_API_CONTAINER_NAME:-skybrain-relay-api}
+    environment:
+      RELAY_DB_PATH: /app/runtime/data/relay.db
+      RELAY_RUNTIME_LOG_DIR: /app/runtime/logs
+      DEFAULT_RTMP_BASE_URL: ${DEFAULT_RTMP_BASE_URL:-rtmp://192.168.107.230:1935/live}
+      RELAY_FFMPEG_BIN: ${RELAY_FFMPEG_BIN:-ffmpeg}
+      RELAY_FFMPEG_LOGLEVEL: ${RELAY_FFMPEG_LOGLEVEL:-info}
+      RELAY_FFMPEG_EXTRA_ARGS: ${RELAY_FFMPEG_EXTRA_ARGS:-}
+      RELAY_MAX_RETRY_COUNT: ${RELAY_MAX_RETRY_COUNT:-3}
+      RELAY_RETRY_DELAY_SECONDS: ${RELAY_RETRY_DELAY_SECONDS:-5}
+      # 默认与 RELAY_WEB_PORT=18088 一致，避免与宿主机 8080（常留给 SRS 等）冲突
+      RELAY_WEB_ALLOWED_ORIGINS: ${RELAY_WEB_ALLOWED_ORIGINS:-http://127.0.0.1:18088,http://localhost:18088}
+    ports:
+      - "${RELAY_API_PORT:-18081}:18081"
+    volumes:
+      - ${RELAY_HOST_DATA_DIR:-./runtime/data}:/app/runtime/data
+      - ${RELAY_HOST_LOG_DIR:-./runtime/logs}:/app/runtime/logs
+      - ${RELAY_HOST_TMP_DIR:-./runtime/tmp}:/app/runtime/tmp
+    restart: unless-stopped
+
+  relay-web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile.prod
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL}
+    image: ${RELAY_WEB_IMAGE_NAME:-skybrain/relay-web:server}
+    container_name: ${RELAY_WEB_CONTAINER_NAME:-skybrain-relay-web}
+    depends_on:
+      - relay-api
+    ports:
+      - "${RELAY_WEB_PORT:-18088}:80"
+    restart: unless-stopped

@@ -128,12 +128,14 @@ class RelayApiTestCase(unittest.TestCase):
             json={
                 "name": "Edge SRS",
                 "rtmp_base_url": "rtmp://10.0.0.20:1935/live",
+                "playback_vhost": "vid-2162315",
                 "is_default": True,
             },
         )
         self.assertEqual(create_target.status_code, 201)
         created_target = create_target.json()
         self.assertTrue(created_target["is_default"])
+        self.assertEqual(created_target["playback_vhost"], "vid-2162315")
 
         refreshed_targets = self.client.get("/api/v1/targets").json()
         refreshed_default = [item for item in refreshed_targets if item["is_default"]]
@@ -167,6 +169,7 @@ class RelayApiTestCase(unittest.TestCase):
             json={
                 "name": "Default SRS",
                 "rtmp_base_url": "rtmp://localhost:1935/live",
+                "playback_vhost": "",
                 "is_default": True,
             },
         )
@@ -358,6 +361,17 @@ class RelayApiTestCase(unittest.TestCase):
             stop_response = retry_client.post(f"/api/v1/jobs/{source_id}/stop")
             self.assertEqual(stop_response.status_code, 200)
             retry_client.close()
+
+    def test_build_rtmp_publish_url_includes_vhost(self) -> None:
+        from apps.worker.manager import build_rtmp_publish_url
+
+        self.assertEqual(
+            build_rtmp_publish_url("rtmp://h:1935/live", "sk", ""),
+            "rtmp://h:1935/live/sk",
+        )
+        with_v = build_rtmp_publish_url("rtmp://h:1935/live", "sk", "vid-2162315")
+        self.assertIn("?vhost=", with_v)
+        self.assertIn("vid-2162315", with_v)
 
 
 if __name__ == "__main__":

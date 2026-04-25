@@ -331,13 +331,14 @@ MVP 要求：
 
 1. `relay-api`
 2. `relay-worker`
-3. `relay-web`（可选）
-4. `srs`（仅联调时可选）
+3. `relay-web`
+4. 局域网现成 `srs` 服务
 
 说明：
 
 1. `relay-worker` 在 MVP 也可以与 `relay-api` 同进程或同容器运行
 2. `SQLite` 直接使用本地文件，不需要单独数据库容器
+3. 本地联调不再额外起 SRS 容器，`DEFAULT_RTMP_BASE_URL` 需要指向现成局域网 SRS
 
 ## 10.2 本地目录挂载建议
 

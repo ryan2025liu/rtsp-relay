@@ -17,6 +17,7 @@
 13. `POST /api/v1/jobs/{source_id}/restart`
 14. `GET /api/v1/jobs/{source_id}/status`
 15. `GET /api/v1/jobs/{source_id}/logs`
+16. `GET /api/v1/preview/{target_id}/{proxy_path}`
 
 范围说明：
 
@@ -34,3 +35,5 @@
 6. `jobs/{source_id}/logs` 会返回本地日志文件的尾部内容，并对 RTSP 凭据做脱敏处理。
 7. 异常退出任务会按本地固定延迟自动重试，直到达到最大重试次数。
 8. `sources/{id}` 会聚合返回 source、绑定 target、当前 job 状态和最近日志，便于本地排障。
+9. `targets` 支持可选 `playback_vhost`：在 HTTP 预览（FLV/HLS 代理）与 **RTMP 推流（ffmpeg 输出）** 中均会附加同名的 `?vhost=` 查询参数，以便与 SRS 上配置的虚拟主机一致。
+10. `preview/{target_id}/{proxy_path}` 会把 SRS 的 HLS/FLV 资源同源代理给前端预览播放器，避免浏览器 CORS 问题。

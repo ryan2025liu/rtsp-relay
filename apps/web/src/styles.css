@@ -56,6 +56,8 @@ textarea {
 .preview-links {
   display: flex;
   gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
 }
 
 .masthead,
@@ -343,6 +345,17 @@ textarea {
   margin-bottom: 6px;
 }
 
+.preview-push-warn {
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(203, 92, 44, 0.45);
+  background: rgba(255, 236, 214, 0.9);
+  color: #3d2a1a;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .preview-frame {
   flex: 1;
   min-height: 190px;
@@ -354,6 +367,96 @@ textarea {
   color: #f8f4ed;
   display: grid;
   align-content: space-between;
+}
+
+.preview-player,
+.preview-empty {
+  display: grid;
+  gap: 12px;
+}
+
+.preview-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.preview-controls {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.preview-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #f8f4ed;
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(248, 244, 237, 0.45);
+}
+
+.status-dot.playing {
+  background: #40c057;
+}
+
+.status-dot.buffering {
+  background: #ffd43b;
+}
+
+.status-dot.error {
+  background: #ff6b6b;
+}
+
+.status-dot.paused {
+  background: #74c0fc;
+}
+
+.status-dot.loading {
+  background: rgba(248, 244, 237, 0.45);
+}
+
+.ghost-button.small {
+  padding: 8px 10px;
+  border-radius: 12px;
+}
+
+.preview-video {
+  width: 100%;
+  min-height: 280px;
+  max-height: 520px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 18px;
+  background: #111;
+  object-fit: contain;
+}
+
+.preview-player-meta strong,
+.preview-empty strong {
+  display: block;
+  font-size: 1rem;
+}
+
+.preview-player-meta p,
+.preview-empty p {
+  margin: 6px 0 0;
+  color: rgba(248, 244, 237, 0.86);
+}
+
+.preview-error {
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(143, 63, 73, 0.18);
+  color: #ffdede;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 0.92rem;
 }
 
 .preview-links {
